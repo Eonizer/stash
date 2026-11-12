@@ -49,6 +49,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 type SceneFinder interface {
@@ -65,7 +66,9 @@ type TagFinder interface {
 }
 
 type PerformerFinder interface {
+	models.PerformerGetter
 	All(ctx context.Context) ([]*models.Performer, error)
+	GetImage(ctx context.Context, performerID int) ([]byte, error)
 }
 
 type GroupFinder interface {
@@ -441,6 +444,12 @@ func (me *Server) serviceControlHandler(w http.ResponseWriter, r *http.Request) 
 func (me *Server) serveIcon(w http.ResponseWriter, r *http.Request) {
 	sceneId := r.URL.Query().Get("scene")
 	if sceneId == "" {
+		performerId := r.URL.Query().Get("performer")
+		if performerId == "" {
+			return
+		}
+
+		me.servePerformerIcon(w, r, performerId)
 		return
 	}
 
@@ -463,6 +472,29 @@ func (me *Server) serveIcon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	me.sceneServer.ServeScreenshot(scene, w, r)
+}
+
+func (me *Server) servePerformerIcon(w http.ResponseWriter, r *http.Request, performerId string) {
+	var image []byte
+	repo := me.repository
+	err := repo.WithReadTxn(r.Context(), func(ctx context.Context) error {
+		idInt, err := strconv.Atoi(performerId)
+		if err != nil {
+			return nil
+		}
+		image, err = repo.PerformerFinder.GetImage(ctx, idInt)
+		return err
+	})
+	if err != nil {
+		logger.Warnf("failed to execute read transaction while trying to serve a performer icon: %v", err)
+	}
+
+	if len(image) == 0 {
+		http.Error(w, "performer image not found", http.StatusNotFound)
+		return
+	}
+
+	utils.ServeImage(w, r, image)
 }
 
 func (me *Server) contentDirectoryInitialEvent(ctx context.Context, urls []*url.URL, sid string) {

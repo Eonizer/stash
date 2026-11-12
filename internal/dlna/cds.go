@@ -309,7 +309,7 @@ func (me *contentDirectoryService) handleBrowseDirectChildren(obj object, host s
 
 	// Performers
 	if obj.Path == "performers" {
-		objs = me.getPerformers()
+		objs = me.getPerformers(host)
 	}
 
 	if strings.HasPrefix(obj.Path, "performers/") {
@@ -405,8 +405,12 @@ func makeBrowseResult(objs []interface{}, updateID string) (map[string]string, e
 }
 
 func makeStorageFolder(id, title, parentID string) upnpav.Container {
+	return makeStorageFolderWithIcon(id, title, parentID, "")
+}
+
+func makeStorageFolderWithIcon(id, title, parentID, iconURI string) upnpav.Container {
 	defaultChildCount := 1
-	return upnpav.Container{
+	ret := upnpav.Container{
 		Object: upnpav.Object{
 			ID:         id,
 			Restricted: 1,
@@ -416,6 +420,13 @@ func makeStorageFolder(id, title, parentID string) upnpav.Container {
 		},
 		ChildCount: defaultChildCount,
 	}
+
+	if iconURI != "" {
+		ret.Object.Icon = iconURI
+		ret.Object.AlbumArtURI = iconURI
+	}
+
+	return ret
 }
 
 func getRootObject() []interface{} {
@@ -618,7 +629,18 @@ func (me *contentDirectoryService) getTagScenes(paths []string, host string) []i
 	return me.getVideos(sceneFilter, parentID, host)
 }
 
-func (me *contentDirectoryService) getPerformers() []interface{} {
+func makePerformerIconURI(host string, performerID int) string {
+	return (&url.URL{
+		Scheme: "http",
+		Host:   host,
+		Path:   iconPath,
+		RawQuery: url.Values{
+			"performer": {strconv.Itoa(performerID)},
+		}.Encode(),
+	}).String()
+}
+
+func (me *contentDirectoryService) getPerformers(host string) []interface{} {
 	var objs []interface{}
 
 	r := me.repository
@@ -629,7 +651,7 @@ func (me *contentDirectoryService) getPerformers() []interface{} {
 		}
 
 		for _, s := range performers {
-			objs = append(objs, makeStorageFolder("performers/"+strconv.Itoa(s.ID), s.Name, "performers"))
+			objs = append(objs, makeStorageFolderWithIcon("performers/"+strconv.Itoa(s.ID), s.Name, "performers", makePerformerIconURI(host, s.ID)))
 		}
 
 		return nil
